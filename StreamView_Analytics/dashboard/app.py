@@ -154,11 +154,14 @@ with col4:
         )
     )
 
+
 # POPULARIDAD POR GÉNERO
 
 st.divider()
 
-st.write("### 🔥 Popularidad promedio por género")
+st.header("📊 Popularidad y calidad del catálogo")
+
+st.subheader("🔥 Popularidad promedio por género")
 
 df_genres = df_filtered.dropna(subset=["genres"]).copy()
 
@@ -209,54 +212,125 @@ st.plotly_chart(
     use_container_width=True
 )
 
-# VOLUMEN DEL CATÁLOGO VS POPULARIDAD
+# POPULARIDAD Y CALIDAD DEL CATÁLOGO
 
 st.divider()
 
-st.write("### 📚 Volumen del catálogo vs. popularidad")
+st.header("📊 Popularidad y calidad del catálogo")
 
-genre_comparison = (
-    df_genres
-    .groupby("genres", as_index=False)
-    .agg(
-        peliculas=("title", "count"),
-        popularidad_promedio=("popularity", "mean")
+# Preparación de géneros
+
+df_genres = df_filtered.dropna(subset=["genres"]).copy()
+
+df_genres["genres"] = df_genres["genres"].str.split(",")
+
+df_genres = df_genres.explode("genres")
+
+df_genres["genres"] = df_genres["genres"].str.strip()
+
+
+# CREAR DOS COLUMNAS
+
+col1, col2 = st.columns(2)
+
+
+# GRÁFICO 1 — POPULARIDAD POR GÉNERO
+
+with col1:
+
+    st.subheader("🔥 Popularidad promedio por género")
+
+    popularity_by_genre = (
+        df_genres
+        .groupby("genres", as_index=False)
+        .agg(
+            popularidad_promedio=("popularity", "mean"),
+            peliculas=("title", "count")
+        )
+        .sort_values(
+            "popularidad_promedio",
+            ascending=False
+        )
     )
-)
+
+    fig_genre = px.bar(
+        popularity_by_genre,
+        x="popularidad_promedio",
+        y="genres",
+        orientation="h",
+        labels={
+            "popularidad_promedio": "Popularidad promedio",
+            "genres": "Género"
+        }
+    )
+
+    fig_genre.update_layout(
+        yaxis=dict(
+            categoryorder="total ascending"
+        ),
+        height=650
+    )
+
+    st.plotly_chart(
+        fig_genre,
+        use_container_width=True
+    )
 
 
-fig_volume_popularity = px.scatter(
-    genre_comparison,
-    x="peliculas",
-    y="popularidad_promedio",
-    text="genres",
-    size="peliculas",
-    labels={
-        "peliculas": "Cantidad de películas",
-        "popularidad_promedio": "Popularidad promedio",
-        "genres": "Género"
-    },
-    title="Volumen del catálogo y popularidad por género"
-)
+# GRÁFICO 2 — VOLUMEN VS. POPULARIDAD
 
+with col2:
 
-fig_volume_popularity.update_traces(
-    textposition="top center"
-)
+    st.subheader("📚 Volumen del catálogo vs. popularidad")
 
+    genre_comparison = (
+        df_genres
+        .groupby("genres", as_index=False)
+        .agg(
+            peliculas=("title", "count"),
+            popularidad_promedio=("popularity", "mean")
+        )
+    )
 
-st.plotly_chart(
-    fig_volume_popularity,
-    use_container_width=True
-)
+    fig_volume_popularity = px.scatter(
+        genre_comparison,
+        x="peliculas",
+        y="popularidad_promedio",
+        text="genres",
+        size="peliculas",
+        labels={
+            "peliculas": "Cantidad de películas",
+            "popularidad_promedio": "Popularidad promedio",
+            "genres": "Género"
+        }
+    )
+
+    fig_volume_popularity.update_traces(
+        textposition="top center"
+    )
+
+    st.plotly_chart(
+        fig_volume_popularity,
+        use_container_width=True
+    )
 
 # PRESUPUESTO VS. INGRESOS
 
 st.divider()
 
-st.write("### 💰 Presupuesto vs. ingresos")
+st.header("💰 Desempeño financiero")
+
+st.subheader("Presupuesto vs. ingresos")
 
 df_financial = get_financial_subset(df_filtered).copy()
+
+financial_correlation = df_financial["budget"].corr(
+    df_financial["revenue"]
+)
+st.metric(
+    "📈 Correlación presupuesto-ingresos",
+    f"{financial_correlation:.2f}"
+)
 
 fig_financial = px.scatter(
     df_financial,
@@ -281,6 +355,59 @@ st.plotly_chart(
     use_container_width=True
 )
 
+# CALIDAD VS. POPULARIDAD POR GÉNERO
+
+st.divider()
+
+st.write("### ⭐ Valoración vs. popularidad por género")
+
+df_quality = df_filtered[
+    df_filtered["vote_count"] > 0
+].copy()
+
+df_quality["genres"] = df_quality["genres"].str.split(",")
+
+df_quality = df_quality.explode("genres")
+
+df_quality["genres"] = df_quality["genres"].str.strip()
+
+
+quality_by_genre = (
+    df_quality
+    .groupby("genres", as_index=False)
+    .agg(
+        valoracion_promedio=("vote_average", "mean"),
+        popularidad_promedio=("popularity", "mean"),
+        peliculas=("title", "count")
+    )
+)
+
+
+fig_quality = px.scatter(
+    quality_by_genre,
+    x="valoracion_promedio",
+    y="popularidad_promedio",
+    size="peliculas",
+    text="genres",
+    hover_data=["peliculas"],
+    labels={
+        "valoracion_promedio": "Valoración promedio",
+        "popularidad_promedio": "Popularidad promedio",
+        "peliculas": "Cantidad de películas"
+    },
+    title="Valoración y popularidad según género"
+)
+
+
+fig_quality.update_traces(
+    textposition="top center"
+)
+
+
+st.plotly_chart(
+    fig_quality,
+    use_container_width=True
+)
 # CATÁLOGO
 
 st.divider()
