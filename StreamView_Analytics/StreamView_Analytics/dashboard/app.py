@@ -1,0 +1,301 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+from src.preprocessing import load_clean_movies, get_financial_subset
+
+
+# CONFIGURACIÓN
+
+st.set_page_config(
+    page_title="StreamView Analytics",
+    page_icon="🎬",
+    layout="wide",
+)
+
+
+# CARGA DE DATOS
+
+@st.cache_data
+def load_data():
+    return load_clean_movies()
+
+
+df = load_data()
+
+
+# TÍTULO
+
+st.title("🎬 StreamView Analytics")
+
+st.subheader("Análisis del catálogo de películas")
+
+st.write(
+    "Dashboard interactivo para analizar popularidad, valoración "
+    "y desempeño financiero del catálogo."
+)
+
+
+# FILTROS
+
+st.sidebar.header("🔎 Filtros")
+
+
+# Filtro por año
+years = sorted(
+    df["release_year"].dropna().unique()
+)
+
+selected_year = st.sidebar.selectbox(
+    "Año de estreno",
+    ["Todos"] + years
+)
+
+
+# Filtro por género
+genres = sorted(
+    set(
+        genre.strip()
+        for value in df["genres"].dropna()
+        for genre in value.split(",")
+    )
+)
+
+selected_genre = st.sidebar.selectbox(
+    "Género",
+    ["Todos"] + genres
+)
+
+
+# APLICACIÓN DE FILTROS
+
+df_filtered = df.copy()
+
+
+if selected_year != "Todos":
+    df_filtered = df_filtered[
+        df_filtered["release_year"] == selected_year
+    ]
+
+
+if selected_genre != "Todos":
+    df_filtered = df_filtered[
+        df_filtered["genres"]
+        .fillna("")
+        .str.contains(
+            selected_genre,
+            regex=False
+        )
+    ]
+
+
+# PREPARACIÓN PARA KPIs
+
+df_ratings = df_filtered[
+    df_filtered["vote_count"] > 0
+].copy()
+
+
+df_financial = get_financial_subset(
+    df_filtered
+)
+
+
+# KPIs
+
+total_movies = len(df_filtered)
+
+avg_rating = df_ratings["vote_average"].mean()
+
+avg_popularity = df_filtered["popularity"].mean()
+
+avg_revenue = df_financial["revenue"].mean()
+
+
+col1, col2, col3, col4 = st.columns(4)
+
+
+with col1:
+    st.metric(
+        label="🎬 Total de películas",
+        value=f"{total_movies:,}"
+    )
+
+
+with col2:
+    st.metric(
+        label="⭐ Valoración promedio",
+        value=(
+            f"{avg_rating:.2f}"
+            if pd.notna(avg_rating)
+            else "N/A"
+        )
+    )
+
+
+with col3:
+    st.metric(
+        label="🔥 Popularidad promedio",
+        value=(
+            f"{avg_popularity:.2f}"
+            if pd.notna(avg_popularity)
+            else "N/A"
+        )
+    )
+
+
+with col4:
+    st.metric(
+        label="💰 Ingresos promedio",
+        value=(
+            f"${avg_revenue:,.0f}"
+            if pd.notna(avg_revenue)
+            else "N/A"
+        )
+    )
+
+# POPULARIDAD POR GÉNERO
+
+st.divider()
+
+st.write("### 🔥 Popularidad promedio por género")
+
+df_genres = df_filtered.dropna(subset=["genres"]).copy()
+
+df_genres["genres"] = df_genres["genres"].str.split(",")
+
+df_genres = df_genres.explode("genres")
+
+df_genres["genres"] = df_genres["genres"].str.strip()
+
+
+popularity_by_genre = (
+    df_genres
+    .groupby("genres", as_index=False)
+    .agg(
+        popularidad_promedio=("popularity", "mean"),
+        peliculas=("title", "count")
+    )
+    .sort_values(
+        "popularidad_promedio",
+        ascending=False
+    )
+)
+
+
+fig_genre = px.bar(
+    popularity_by_genre,
+    x="popularidad_promedio",
+    y="genres",
+    orientation="h",
+    labels={
+        "popularidad_promedio": "Popularidad promedio",
+        "genres": "Género"
+    },
+    title="Popularidad promedio según género"
+)
+
+
+fig_genre.update_layout(
+    yaxis=dict(
+        categoryorder="total ascending"
+    ),
+    height=650
+)
+
+
+st.plotly_chart(
+    fig_genre,
+    use_container_width=True
+)
+
+# VOLUMEN DEL CATÁLOGO VS POPULARIDAD
+
+st.divider()
+
+st.write("### 📚 Volumen del catálogo vs. popularidad")
+
+genre_comparison = (
+    df_genres
+    .groupby("genres", as_index=False)
+    .agg(
+        peliculas=("title", "count"),
+        popularidad_promedio=("popularity", "mean")
+    )
+)
+
+
+fig_volume_popularity = px.scatter(
+    genre_comparison,
+    x="peliculas",
+    y="popularidad_promedio",
+    text="genres",
+    size="peliculas",
+    labels={
+        "peliculas": "Cantidad de películas",
+        "popularidad_promedio": "Popularidad promedio",
+        "genres": "Género"
+    },
+    title="Volumen del catálogo y popularidad por género"
+)
+
+
+fig_volume_popularity.update_traces(
+    textposition="top center"
+)
+
+
+st.plotly_chart(
+    fig_volume_popularity,
+    use_container_width=True
+)
+
+# PRESUPUESTO VS. INGRESOS
+
+st.divider()
+
+st.write("### 💰 Presupuesto vs. ingresos")
+
+df_financial = get_financial_subset(df_filtered).copy()
+
+fig_financial = px.scatter(
+    df_financial,
+    x="budget",
+    y="revenue",
+    hover_name="title",
+    hover_data=[
+        "release_year",
+        "popularity",
+        "vote_average"
+    ],
+    labels={
+        "budget": "Presupuesto (USD)",
+        "revenue": "Ingresos (USD)"
+    },
+    title="Relación entre presupuesto e ingresos"
+)
+
+
+st.plotly_chart(
+    fig_financial,
+    use_container_width=True
+)
+
+# CATÁLOGO
+
+st.divider()
+
+st.write("### Catálogo filtrado")
+
+st.caption(
+    f"Mostrando {len(df_filtered):,} películas "
+    "según los filtros seleccionados."
+)
+
+
+with st.expander("Ver datos del catálogo"):
+
+    st.dataframe(
+        df_filtered.head(20),
+        use_container_width=True
+    )
