@@ -79,16 +79,14 @@ if selected_year != "Todos":
 
 
 if selected_genres:
-    genre_pattern = "|".join(
-        selected_genres
-    )
-
     df_filtered = df_filtered[
         df_filtered["genres"]
         .fillna("")
-        .str.contains(
-            genre_pattern,
-            regex=False
+        .apply(
+            lambda x: any(
+                genre in x.split(",")
+                for genre in selected_genres
+            )
         )
     ]
 
@@ -329,6 +327,48 @@ with col2:
         fig_volume_popularity,
         use_container_width=True
     )
+
+# EVOLUCIÓN DEL CATÁLOGO
+
+st.divider()
+
+st.header("📈 Evolución del catálogo")
+
+st.subheader("Cantidad de películas estrenadas por año")
+
+movies_by_year = (
+    df_filtered
+    .dropna(subset=["release_year"])
+    .groupby("release_year", as_index=False)
+    .agg(
+        peliculas=("title", "count")
+    )
+    .sort_values("release_year")
+)
+
+fig_year = px.line(
+    movies_by_year,
+    x="release_year",
+    y="peliculas",
+    markers=True,
+    labels={
+        "release_year": "Año de estreno",
+        "peliculas": "Cantidad de películas"
+    }
+)
+
+fig_year.update_traces(
+    hovertemplate=(
+        "Año: %{x}<br>"
+        "Películas: %{y:,}"
+        "<extra></extra>"
+    )
+)
+
+st.plotly_chart(
+    fig_year,
+    use_container_width=True
+)
 
 # PRESUPUESTO VS. INGRESOS
 
