@@ -23,6 +23,9 @@ def load_data():
 
 df = load_data()
 
+def reset_filters():
+    st.session_state["year_filter"] = "Todos"
+    st.session_state["genre_filter"] = []
 
 # TÍTULO
 
@@ -42,17 +45,20 @@ st.sidebar.header("🔎 Filtros")
 
 
 # Filtro por año
+
 years = sorted(
     df["release_year"].dropna().unique()
 )
 
 selected_year = st.sidebar.selectbox(
     "Año de estreno",
-    ["Todos"] + years
+    ["Todos"] + years,
+    key="year_filter"
 )
 
 
 # Filtro por género
+
 genres = sorted(
     set(
         genre.strip()
@@ -64,7 +70,20 @@ genres = sorted(
 selected_genres = st.sidebar.multiselect(
     "Géneros",
     genres,
-    default=[]
+    key="genre_filter"
+)
+
+
+# Restablecer filtros
+
+def reset_filters():
+    st.session_state["year_filter"] = "Todos"
+    st.session_state["genre_filter"] = []
+
+
+st.sidebar.button(
+    "🔄 Restablecer filtros",
+    on_click=reset_filters
 )
 
 # APLICACIÓN DE FILTROS
@@ -369,6 +388,81 @@ st.plotly_chart(
     fig_year,
     use_container_width=True
 )
+
+# INSIGHTS EJECUTIVOS
+
+st.divider()
+
+st.header("💡 Insights ejecutivos")
+
+# Popularidad promedio por género
+genre_popularity = (
+    df_filtered
+    .assign(genres=df_filtered["genres"].str.split(","))
+    .explode("genres")
+)
+
+genre_popularity["genres"] = genre_popularity["genres"].str.strip()
+
+genre_popularity = (
+    genre_popularity
+    .groupby("genres", as_index=False)
+    .agg(
+        popularidad_promedio=("popularity", "mean")
+    )
+    .sort_values("popularidad_promedio", ascending=False)
+)
+
+# Género más popular
+if not genre_popularity.empty:
+    top_genre = genre_popularity.iloc[0]["genres"]
+    top_popularity = genre_popularity.iloc[0]["popularidad_promedio"]
+
+    st.info(
+        f"🔥 **Mayor popularidad:** {top_genre}, "
+        f"con una popularidad promedio de **{top_popularity:.2f}**."
+    )
+
+# Género con mayor volumen
+genre_volume = (
+    df_filtered
+    .assign(genres=df_filtered["genres"].str.split(","))
+    .explode("genres")
+)
+
+genre_volume["genres"] = genre_volume["genres"].str.strip()
+
+genre_volume = (
+    genre_volume
+    .groupby("genres", as_index=False)
+    .agg(
+        peliculas=("title", "nunique")
+    )
+    .sort_values("peliculas", ascending=False)
+)
+
+if not genre_volume.empty:
+    top_volume_genre = genre_volume.iloc[0]["genres"]
+    top_volume = genre_volume.iloc[0]["peliculas"]
+
+    st.info(
+        f"📚 **Mayor volumen de catálogo:** {top_volume_genre}, "
+        f"con **{top_volume:,} películas**."
+    )
+
+# Relación presupuesto-ingresos
+df_financial_insight = get_financial_subset(df_filtered)
+
+if len(df_financial_insight) >= 2:
+    financial_corr = (
+        df_financial_insight["budget"]
+        .corr(df_financial_insight["revenue"])
+    )
+
+    st.info(
+        f"💰 **Relación presupuesto-ingresos:** "
+        f"la correlación es de **{financial_corr:.2f}**."
+    )
 
 # PRESUPUESTO VS. INGRESOS
 
