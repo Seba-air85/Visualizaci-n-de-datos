@@ -61,11 +61,11 @@ genres = sorted(
     )
 )
 
-selected_genre = st.sidebar.selectbox(
-    "Género",
-    ["Todos"] + genres
+selected_genres = st.sidebar.multiselect(
+    "Géneros",
+    genres,
+    default=[]
 )
-
 
 # APLICACIÓN DE FILTROS
 
@@ -78,12 +78,16 @@ if selected_year != "Todos":
     ]
 
 
-if selected_genre != "Todos":
+if selected_genres:
+    genre_pattern = "|".join(
+        selected_genres
+    )
+
     df_filtered = df_filtered[
         df_filtered["genres"]
         .fillna("")
         .str.contains(
-            selected_genre,
+            genre_pattern,
             regex=False
         )
     ]
@@ -111,6 +115,9 @@ avg_popularity = df_filtered["popularity"].mean()
 
 avg_revenue = df_financial["revenue"].mean()
 
+st.divider()
+
+st.header("📌 Resumen ejecutivo")
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -154,6 +161,10 @@ with col4:
         )
     )
 
+st.caption(
+    f"Los indicadores financieros consideran únicamente "
+    f"{len(df_financial):,} películas con presupuesto e ingresos disponibles."
+)
 
 # POPULARIDAD POR GÉNERO
 
@@ -293,18 +304,23 @@ with col2:
     )
 
     fig_volume_popularity = px.scatter(
-        genre_comparison,
-        x="peliculas",
-        y="popularidad_promedio",
-        text="genres",
-        size="peliculas",
-        labels={
-            "peliculas": "Cantidad de películas",
-            "popularidad_promedio": "Popularidad promedio",
-            "genres": "Género"
-        }
-    )
-
+    genre_comparison,
+    x="peliculas",
+    y="popularidad_promedio",
+    text="genres",
+    size="peliculas",
+    hover_name="genres",
+    hover_data={
+        "peliculas": True,
+        "popularidad_promedio": ":.2f"
+    },
+    labels={
+        "peliculas": "Cantidad de películas",
+        "popularidad_promedio": "Popularidad promedio",
+        "genres": "Género"
+    }
+)
+    
     fig_volume_popularity.update_traces(
         textposition="top center"
     )
@@ -337,18 +353,29 @@ fig_financial = px.scatter(
     x="budget",
     y="revenue",
     hover_name="title",
-    hover_data=[
-        "release_year",
-        "popularity",
-        "vote_average"
-    ],
+    hover_data={
+        "budget": ":$,.0f",
+        "revenue": ":$,.0f",
+        "release_year": True,
+        "popularity": ":.2f",
+        "vote_average": ":.2f"
+    },
     labels={
         "budget": "Presupuesto (USD)",
-        "revenue": "Ingresos (USD)"
-    },
-    title="Relación entre presupuesto e ingresos"
+        "revenue": "Ingresos (USD)",
+        "release_year": "Año de estreno",
+        "popularity": "Popularidad",
+        "vote_average": "Valoración"
+    }
 )
 
+fig_financial.update_xaxes(
+    type="log"
+)
+
+fig_financial.update_yaxes(
+    type="log"
+)
 
 st.plotly_chart(
     fig_financial,
