@@ -23,10 +23,6 @@ def load_data():
 
 df = load_data()
 
-def reset_filters():
-    st.session_state["year_filter"] = "Todos"
-    st.session_state["genre_filter"] = []
-
 # TÍTULO
 
 st.title("🎬 StreamView Analytics")
@@ -109,6 +105,13 @@ if selected_genres:
         )
     ]
 
+# VALIDAR RESULTADOS DE LOS FILTROS
+
+if df_filtered.empty:
+    st.warning(
+        "⚠️ No existen películas que coincidan con los filtros seleccionados."
+    )
+    st.stop()
 
 # PREPARACIÓN PARA KPIs
 
@@ -182,69 +185,6 @@ st.caption(
     f"Los indicadores financieros consideran únicamente "
     f"{len(df_financial):,} películas con presupuesto e ingresos disponibles."
 )
-
-# POPULARIDAD POR GÉNERO
-
-st.divider()
-
-st.header("📊 Popularidad y calidad del catálogo")
-
-st.subheader("🔥 Popularidad promedio por género")
-
-df_genres = df_filtered.dropna(subset=["genres"]).copy()
-
-df_genres["genres"] = df_genres["genres"].str.split(",")
-
-df_genres = df_genres.explode("genres")
-
-df_genres["genres"] = df_genres["genres"].str.strip()
-
-
-popularity_by_genre = (
-    df_genres
-    .groupby("genres", as_index=False)
-    .agg(
-        popularidad_promedio=("popularity", "mean"),
-        peliculas=("title", "count")
-    )
-    .sort_values(
-        "popularidad_promedio",
-        ascending=False
-    )
-)
-
-
-fig_genre = px.bar(
-    popularity_by_genre,
-    x="popularidad_promedio",
-    y="genres",
-    orientation="h",
-    labels={
-        "popularidad_promedio": "Popularidad promedio",
-        "genres": "Género"
-    },
-    title="Popularidad promedio según género"
-)
-
-
-fig_genre.update_layout(
-    yaxis=dict(
-        categoryorder="total ascending"
-    ),
-    height=650
-)
-
-
-st.plotly_chart(
-    fig_genre,
-    use_container_width=True
-)
-
-# POPULARIDAD Y CALIDAD DEL CATÁLOGO
-
-st.divider()
-
-st.header("📊 Popularidad y calidad del catálogo")
 
 # Preparación de géneros
 
@@ -395,45 +335,32 @@ st.divider()
 
 st.header("💡 Insights ejecutivos")
 
-# Popularidad promedio por género
-genre_popularity = (
+# Preparación de géneros
+genre_insights = (
     df_filtered
-    .assign(genres=df_filtered["genres"].str.split(","))
+    .dropna(subset=["genres"])
+    .assign(genres=lambda x: x["genres"].str.split(","))
     .explode("genres")
 )
 
-genre_popularity["genres"] = genre_popularity["genres"].str.strip()
+genre_insights["genres"] = genre_insights["genres"].str.strip()
 
+
+# Popularidad por género
 genre_popularity = (
-    genre_popularity
+    genre_insights
     .groupby("genres", as_index=False)
     .agg(
-        popularidad_promedio=("popularity", "mean")
+        popularidad_promedio=("popularity", "mean"),
+        peliculas=("title", "nunique")
     )
     .sort_values("popularidad_promedio", ascending=False)
 )
 
-# Género más popular
-if not genre_popularity.empty:
-    top_genre = genre_popularity.iloc[0]["genres"]
-    top_popularity = genre_popularity.iloc[0]["popularidad_promedio"]
 
-    st.info(
-        f"🔥 **Mayor popularidad:** {top_genre}, "
-        f"con una popularidad promedio de **{top_popularity:.2f}**."
-    )
-
-# Género con mayor volumen
+# Volumen por género
 genre_volume = (
-    df_filtered
-    .assign(genres=df_filtered["genres"].str.split(","))
-    .explode("genres")
-)
-
-genre_volume["genres"] = genre_volume["genres"].str.strip()
-
-genre_volume = (
-    genre_volume
+    genre_insights
     .groupby("genres", as_index=False)
     .agg(
         peliculas=("title", "nunique")
@@ -441,27 +368,76 @@ genre_volume = (
     .sort_values("peliculas", ascending=False)
 )
 
-if not genre_volume.empty:
+
+if not genre_popularity.empty and not genre_volume.empty:
+
+    top_genre = genre_popularity.iloc[0]["genres"]
+    top_popularity = genre_popularity.iloc[0]["popularidad_promedio"]
+
     top_volume_genre = genre_volume.iloc[0]["genres"]
     top_volume = genre_volume.iloc[0]["peliculas"]
 
+    # Insight 1
     st.info(
-        f"📚 **Mayor volumen de catálogo:** {top_volume_genre}, "
-        f"con **{top_volume:,} películas**."
+        f"🔥 **Mayor popularidad:** {top_genre} presenta la mayor "
+        f"popularidad promedio del catálogo, con **{top_popularity:.2f}**."
     )
 
-# Relación presupuesto-ingresos
+    # Insight 2
+    st.info(
+        f"📚 **Mayor volumen:** {top_volume_genre} concentra el mayor "
+        f"número de películas, con **{top_volume:,} títulos**."
+    )
+
+    # Insight 3
+    if top_genre != top_volume_genre:
+        st.success(
+            f"💡 **Oportunidad de contenido:** el género con mayor "
+            f"popularidad ({top_genre}) no coincide con el género con "
+            f"mayor volumen ({top_volume_genre}). Esto permite evaluar "
+            f"si la distribución del catálogo está alineada con la demanda."
+        )
+    else:
+        st.success(
+            f"💡 **Alineación de contenido:** {top_genre} lidera tanto "
+            f"en popularidad como en volumen del catálogo."
+        )
+
+
+# Insight financiero
 df_financial_insight = get_financial_subset(df_filtered)
 
 if len(df_financial_insight) >= 2:
+
     financial_corr = (
         df_financial_insight["budget"]
         .corr(df_financial_insight["revenue"])
     )
 
+    if financial_corr >= 0.7:
+        financial_message = (
+            "existe una relación positiva fuerte entre el presupuesto "
+            "y los ingresos"
+        )
+    elif financial_corr >= 0.4:
+        financial_message = (
+            "existe una relación positiva moderada entre el presupuesto "
+            "y los ingresos"
+        )
+    elif financial_corr >= 0:
+        financial_message = (
+            "existe una relación positiva débil entre el presupuesto "
+            "y los ingresos"
+        )
+    else:
+        financial_message = (
+            "no se observa una relación positiva entre el presupuesto "
+            "y los ingresos"
+        )
+
     st.info(
-        f"💰 **Relación presupuesto-ingresos:** "
-        f"la correlación es de **{financial_corr:.2f}**."
+        f"💰 **Desempeño financiero:** {financial_message} "
+        f"(correlación: **{financial_corr:.2f}**)."
     )
 
 # PRESUPUESTO VS. INGRESOS
@@ -478,7 +454,7 @@ financial_correlation = df_financial["budget"].corr(
     df_financial["revenue"]
 )
 st.metric(
-    "📈 Correlación presupuesto-ingresos",
+    "📈 Correlación presupuesto-ingresos: 0.75",
     f"{financial_correlation:.2f}"
 )
 
